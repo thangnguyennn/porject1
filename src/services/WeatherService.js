@@ -46,33 +46,36 @@ const formatCurrentWeather = (data) => {
     }
 }
 
-
 const formatForecastWeather = (data) => {
     if (!data) {
         console.error("No forecast data available");
         return { timezone: null, daily: [], hourly: [] };
     }
 
-    const { list, city: { timezone } } = data; // Extract timezone offset (in seconds)
-    const timezoneOffset = `UTC${timezone >= 0 ? "+" : ""}${timezone / 3600}`;
+    const { list, city: { timezone } } = data;
 
-    const daily = [];
+    // Convert timezone offset (seconds) to a string (e.g., 'UTC+8')
+    const timezoneOffset = `UTC${timezone >= 0 ? '+' : ''}${timezone / 3600}`;
+
+    const dailyMap = new Map(); // To store one entry per day
     const hourly = [];
 
     list.forEach((entry) => {
-        const localTime = DateTime.fromSeconds(entry.dt)
-            .setZone(timezoneOffset);
+        const localTime = DateTime.fromSeconds(entry.dt).setZone(timezoneOffset);
 
-        // Group daily forecasts at noon
-        if (localTime.hour === 12) {
-            daily.push({
+        const dateKey = localTime.toFormat('yyyy-MM-dd'); // Group by date
+
+        // Add to dailyMap only if it's the first entry for this date or closer to midday
+        if (!dailyMap.has(dateKey) || Math.abs(localTime.hour - 12) < Math.abs(dailyMap.get(dateKey).hour - 12)) {
+            dailyMap.set(dateKey, {
                 title: localTime.toFormat('ccc'),
                 temp: entry.main.temp,
                 icon: entry.weather[0].icon,
+                hour: localTime.hour // Keep track of the hour for comparison
             });
         }
 
-        // Limit hourly forecasts to the next 5 entries
+        // Add to hourly forecast (limit to next 5)
         if (hourly.length < 5) {
             hourly.push({
                 title: localTime.toFormat('hh:mm a'),
@@ -82,8 +85,12 @@ const formatForecastWeather = (data) => {
         }
     });
 
-    return { timezone: timezoneOffset, daily: daily.slice(0, 5), hourly };
+    // Convert dailyMap values to an array
+    const daily = Array.from(dailyMap.values()).slice(0, 5);
+
+    return { timezone: timezoneOffset, daily, hourly };
 };
+
 
 
 const getFormattedWeatherData = async (searchParams) => {
