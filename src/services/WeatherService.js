@@ -20,7 +20,7 @@ const formatCurrentWeather = (data) => {
         sys: {country, sunrise, sunset},
         name,
         dt,
-        weather
+        weather,
     } = data
 
     console.log(data)
@@ -40,7 +40,7 @@ const formatCurrentWeather = (data) => {
         sunrise, 
         sunset, 
         name, 
-        dt, 
+        dt,
         details, 
         icon
     }
@@ -48,25 +48,43 @@ const formatCurrentWeather = (data) => {
 
 
 const formatForecastWeather = (data) => {
-    let { timezone, daily, hourly} = data;
-    daily = daily.slice(1, 6).map(d => {
-        return {
-            title: formatToLocalTime(d.dt, timezone, 'ccc'),
-            temp: d.temp.day,
-            icon: d.weather[0].icon
-        }
-    })
+    if (!data) {
+        console.error("No forecast data available");
+        return { timezone: null, daily: [], hourly: [] };
+    }
 
-    hourly = hourly.slice(1, 6).map(d => {
-        return {
-            title: formatToLocalTime(d.dt, timezone, 'hh:mm a'),
-            temp: d.temp,
-            icon: d.weather[0].icon
-        }
-    })
+    const { list, city: { timezone } } = data; // Extract timezone offset (in seconds)
+    const timezoneOffset = `UTC${timezone >= 0 ? "+" : ""}${timezone / 3600}`;
 
-    return { timezone, daily, hourly}
-}
+    const daily = [];
+    const hourly = [];
+
+    list.forEach((entry) => {
+        const localTime = DateTime.fromSeconds(entry.dt)
+            .setZone(timezoneOffset);
+
+        // Group daily forecasts at noon
+        if (localTime.hour === 12) {
+            daily.push({
+                title: localTime.toFormat('ccc'),
+                temp: entry.main.temp,
+                icon: entry.weather[0].icon,
+            });
+        }
+
+        // Limit hourly forecasts to the next 5 entries
+        if (hourly.length < 5) {
+            hourly.push({
+                title: localTime.toFormat('hh:mm a'),
+                temp: entry.main.temp,
+                icon: entry.weather[0].icon,
+            });
+        }
+    });
+
+    return { timezone: timezoneOffset, daily: daily.slice(0, 5), hourly };
+};
+
 
 const getFormattedWeatherData = async (searchParams) => {
     const formattedCurrentWeather = await getWeatherData(
@@ -76,12 +94,13 @@ const getFormattedWeatherData = async (searchParams) => {
 
     const { lat, lon } = formattedCurrentWeather;
 
-    const formattedForecastWeather = await getWeatherData('onecall', {
+    const formattedForecastWeather = await getWeatherData('forecast', {
         lat,
         lon,
-        exclude: 'current, minutely, alerts',
         units: searchParams.units,
     }).then(formatForecastWeather)
+
+    console.log(formattedForecastWeather)
 
     return {...formattedCurrentWeather, ...formattedForecastWeather};
 }
